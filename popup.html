@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tab Organiser</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <!-- Header — always visible -->
+  <header>
+    <div class="header-left" id="header-main-left">
+      <img src="icons/icon48.png" alt="" class="logo" width="18" height="18" />
+      <span class="app-name">Tab Organiser</span>
+    </div>
+    <div class="header-left" id="header-settings-left" hidden>
+      <button class="back-btn" id="settings-back">← Back</button>
+      <span class="app-name">Settings</span>
+    </div>
+    <div class="header-right" id="header-main-right">
+      <span class="tab-count" id="tab-count">—</span>
+      <button class="icon-btn" id="refresh-btn" title="Refresh">↻</button>
+      <button class="icon-btn" id="settings-btn" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <!-- ── Main view ── -->
+  <div id="main-view">
+
+    <!-- Age bar -->
+    <div class="age-bar">
+      <div class="age-seg age-today">
+        <span class="age-n" id="age-today-n">—</span>
+        <span class="age-l">Today</span>
+      </div>
+      <div class="age-seg age-week">
+        <span class="age-n" id="age-week-n">—</span>
+        <span class="age-l">Week</span>
+      </div>
+      <div class="age-seg age-old">
+        <span class="age-n" id="age-old-n">—</span>
+        <span class="age-l">Older</span>
+      </div>
+      <div class="age-seg age-scope">
+        <div class="scope-toggle">
+          <button class="stog active" data-scope="currentWindow">Window</button>
+          <button class="stog"        data-scope="allWindows">All</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Suggestions -->
+    <div id="suggestions">
+      <div class="loading-row" id="loading-row">Analysing tabs…</div>
+    </div>
+
+    <!-- Quick actions row -->
+    <div class="quick-row">
+      <button class="qbtn" id="group-time-btn" title="Group tabs by time opened">🕐 Group by time</button>
+      <button class="qbtn btn-focus" id="focus-btn" title="Keep N most recent tabs">⚡ Focus</button>
+    </div>
+
+    <!-- Saved tabs pill -->
+    <div class="saved-pill" id="saved-pill" hidden>
+      <button class="pill-toggle" id="saved-toggle">
+        <span id="saved-pill-label">0 saved</span> <span class="pill-arrow" id="saved-arrow">▸</span>
+      </button>
+      <ul class="saved-drop" id="saved-drop" hidden></ul>
+    </div>
+
+    <!-- Result / undo bar -->
+    <div class="bottom-bar" id="bottom-bar" hidden>
+      <span id="bottom-msg"></span>
+      <button class="link-btn" id="undo-btn" hidden>↩ Undo</button>
+    </div>
+
+  </div><!-- end #main-view -->
+
+  <!-- ── Settings view ── -->
+  <div id="settings-view" hidden>
+
+    <div class="sv-back-row">
+      <span class="sv-saved-flash" id="sv-saved-flash" hidden>Saved</span>
+    </div>
+
+    <div class="sv-body">
+
+      <div class="sv-group">
+        <div class="sv-group-title">Scope</div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">Default scope</div>
+            <div class="sv-hint">Which tabs cleanup actions include</div>
+          </div>
+          <select id="s-scope" class="sv-select">
+            <option value="currentWindow">This window</option>
+            <option value="allWindows">All windows</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sv-group">
+        <div class="sv-group-title">Skip rules</div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">Skip pinned tabs</div>
+            <div class="sv-hint">Pinned tabs are never closed or moved</div>
+          </div>
+          <label class="sw" aria-label="Skip pinned tabs">
+            <input type="checkbox" id="s-skipPinnedTabs" /><span class="sw-track"></span>
+          </label>
+        </div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">Skip audible tabs</div>
+            <div class="sv-hint">Tabs playing audio are left untouched</div>
+          </div>
+          <label class="sw" aria-label="Skip audible tabs">
+            <input type="checkbox" id="s-skipAudibleTabs" /><span class="sw-track"></span>
+          </label>
+        </div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">Close blank tabs</div>
+            <div class="sv-hint">Close untitled about:blank tabs</div>
+          </div>
+          <label class="sw" aria-label="Close blank tabs">
+            <input type="checkbox" id="s-closeBlankTabs" /><span class="sw-track"></span>
+          </label>
+        </div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">Strip tracking params</div>
+            <div class="sv-hint">Remove utm_*, gclid, fbclid before comparing URLs</div>
+          </div>
+          <label class="sw" aria-label="Strip tracking parameters">
+            <input type="checkbox" id="s-removeTrackingParams" /><span class="sw-track"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="sv-group">
+        <div class="sv-group-title">Stale &amp; Focus</div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">Stale after (days)</div>
+            <div class="sv-hint">Tabs not accessed in N days appear as stale</div>
+          </div>
+          <input type="number" id="s-staleDays" class="sv-num" min="1" max="30" />
+        </div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">Focus keeps (tabs)</div>
+            <div class="sv-hint">Most-recent tabs to keep when Focus Mode runs</div>
+          </div>
+          <input type="number" id="s-focusKeepCount" class="sv-num" min="1" max="20" />
+        </div>
+      </div>
+
+      <div class="sv-group">
+        <div class="sv-group-title">Badge thresholds</div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">Orange warning at</div>
+            <div class="sv-hint">Badge turns orange above this count</div>
+          </div>
+          <input type="number" id="s-tabLimitYellow" class="sv-num" min="5" max="200" />
+        </div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">Red warning at</div>
+            <div class="sv-hint">Badge turns red above this count</div>
+          </div>
+          <input type="number" id="s-tabLimitRed" class="sv-num" min="5" max="500" />
+        </div>
+      </div>
+
+    </div><!-- sv-body -->
+  </div><!-- settings-view -->
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

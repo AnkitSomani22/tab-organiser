@@ -1,0 +1,41 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from manifest
+        id: version
+        run: echo "version=$(jq -r .version manifest.json)" >> $GITHUB_OUTPUT
+
+      - name: Build ZIP
+        run: |
+          zip -r tab-organiser.zip . \
+            --exclude "*.git*" \
+            --exclude ".github/*" \
+            --exclude ".claude/*" \
+            --exclude "*.jsonl" \
+            --exclude "*.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Tab Organiser v${{ steps.version.outputs.version }}"
+          body: |
+            ## Installation
+
+            1. Download `tab-organiser.zip` below and unzip it
+            2. Open `chrome://extensions` in Chrome
+            3. Enable **Developer mode** (top right toggle)
+            4. Click **Load unpacked** and select the unzipped folder
+
+            ## What's new
+            See commit history for changes in this release.
+          files: tab-organiser.zip
