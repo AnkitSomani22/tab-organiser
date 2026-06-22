@@ -10,6 +10,8 @@ const FIELDS = [
   { id: 'focusKeepCount',       type: 'number'   },
   { id: 'tabLimitYellow',       type: 'number'   },
   { id: 'tabLimitRed',          type: 'number'   },
+  { id: 'smartCleanCountdown',  type: 'number'   },
+  { id: 'aiProvider',           type: 'select'   },
 ];
 
 document.addEventListener('DOMContentLoaded', async () => {

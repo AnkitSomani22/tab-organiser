@@ -56,8 +56,29 @@
 
     <!-- Quick actions row -->
     <div class="quick-row">
-      <button class="qbtn" id="group-time-btn" title="Group tabs by time opened">🕐 Group by time</button>
       <button class="qbtn btn-focus" id="focus-btn" title="Keep N most recent tabs">⚡ Focus</button>
+      <button class="qbtn btn-ai" id="smart-btn" hidden title="AI suggests which tabs to close">✨ Smart Clean</button>
+      <button class="qbtn btn-cluster" id="cluster-btn" hidden title="AI groups tabs into topic clusters">🧠 Smart Grouping</button>
+    </div>
+
+    <!-- AI cluster preview panel -->
+    <div id="cluster-panel" hidden>
+      <div class="ai-panel-header">
+        <span id="cluster-status">Clustering <span id="cluster-countdown-n" class="ai-countdown-n"></span></span>
+        <button class="link-btn" id="cluster-cancel-btn">Cancel</button>
+      </div>
+      <div id="cluster-loading" class="loading-row" hidden>Clustering tabs with AI…</div>
+      <div id="cluster-list"></div>
+    </div>
+
+    <!-- AI suggestions panel (tab list preview, shown during countdown) -->
+    <div id="ai-panel" hidden>
+      <div class="ai-panel-header">
+        <span id="ai-status">Closing <span id="ai-countdown-n" class="ai-countdown-n"></span></span>
+        <button class="link-btn" id="ai-cancel-btn">Cancel</button>
+      </div>
+      <div id="ai-loading" class="loading-row" hidden>Analyzing tabs with AI…</div>
+      <ul id="ai-preview-list" class="ai-list"></ul>
     </div>
 
     <!-- Saved tabs pill -->
@@ -172,6 +193,27 @@
             <div class="sv-hint">Badge turns red above this count</div>
           </div>
           <input type="number" id="s-tabLimitRed" class="sv-num" min="5" max="500" />
+        </div>
+      </div>
+
+      <div class="sv-group">
+        <div class="sv-group-title">Smart Clean (AI)</div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">Countdown (seconds)</div>
+            <div class="sv-hint">Seconds before Smart Clean auto-closes tabs</div>
+          </div>
+          <input type="number" id="s-smartCleanCountdown" class="sv-num" min="1" max="30" />
+        </div>
+        <div class="sv-row">
+          <div>
+            <div class="sv-label">AI provider</div>
+            <div class="sv-hint">Model used for Smart Clean &amp; Smart Grouping</div>
+          </div>
+          <select id="s-aiProvider" class="sv-select">
+            <option value="gemini">Gemini</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
         </div>
       </div>
 

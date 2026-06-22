@@ -2,12 +2,45 @@
 // Init
 // ---------------------------------------------------------------------------
 
+let aiConfig = null;
+
 document.addEventListener('DOMContentLoaded', async () => {
+  await loadAiConfig();
   await Promise.all([refreshTabCount(), refreshAgeBar()]);
   await restoreScope();
   await refreshAll();
+  await restoreUndoBar();
   wireUp();
 });
+
+async function loadAiConfig() {
+  try {
+    const res = await fetch(chrome.runtime.getURL('config.local.json'));
+    if (!res.ok) return;
+    const cfg = await res.json();
+
+    // Allow Settings page to override the provider from config.local.json
+    const { aiProvider } = await chrome.storage.sync.get({ aiProvider: cfg.provider || 'gemini' });
+    const provider = aiProvider;
+
+    const isGemini = provider === 'gemini';
+    const hasKey = isGemini ? !!cfg.geminiApiKey : !!cfg.apiKey;
+    if (!hasKey) return;
+
+    aiConfig = {
+      provider,
+      apiKey:       cfg.apiKey || '',
+      model:        cfg.model || 'claude-haiku-4-5-20251001',
+      baseUrl:      cfg.baseUrl,
+      geminiApiKey: cfg.geminiApiKey || '',
+      geminiModel:  cfg.geminiModel || 'gemini-flash-latest',
+    };
+    document.getElementById('smart-btn').hidden = false;
+    document.getElementById('cluster-btn').hidden = false;
+  } catch {
+    // config.local.json absent — AI buttons stay hidden
+  }
+}
 
 async function refreshAll() {
   renderLoading();
@@ -349,6 +382,26 @@ function renderSavedPill(saved) {
 }
 
 // ---------------------------------------------------------------------------
+// Undo bar restore
+// ---------------------------------------------------------------------------
+
+async function restoreUndoBar() {
+  const history = await msg('getUndoHistory');
+  if (history && history.length > 0) {
+    const last = history[0];
+    const bar     = document.getElementById('bottom-bar');
+    const msgEl   = document.getElementById('bottom-msg');
+    const undoBtn = document.getElementById('undo-btn');
+    bar.hidden    = false;
+    bar.className = 'bottom-bar success';
+    const n       = last.tabs?.length ?? 0;
+    const word    = n !== 1 ? 'tabs' : 'tab';
+    msgEl.textContent = `Last action: ${last.action} (${n} ${word})`;
+    undoBtn.hidden = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Quick row
 // ---------------------------------------------------------------------------
 
@@ -373,13 +426,6 @@ function wireUp() {
   document.getElementById('settings-btn').addEventListener('click', () => openSettingsView());
   document.getElementById('settings-back').addEventListener('click', () => closeSettingsView());
 
-  // Group by time
-  document.getElementById('group-time-btn').addEventListener('click', async () => {
-    const result = await msg('groupByTime');
-    showBottom(result);
-    await refreshAll();
-  });
-
   // Focus mode
   document.getElementById('focus-btn').addEventListener('click', async () => {
     const { focusKeepCount = 4 } = await chrome.storage.sync.get('focusKeepCount');
@@ -398,6 +444,250 @@ function wireUp() {
     await Promise.all([refreshTabCount(), refreshAgeBar()]);
     await refreshAll();
   });
+
+  // Smart Clean
+  document.getElementById('smart-btn').addEventListener('click', () => runSmartClean());
+  document.getElementById('ai-cancel-btn').addEventListener('click', () => cancelSmartClean());
+
+  // AI Cluster
+  document.getElementById('cluster-btn').addEventListener('click', () => runAiCluster());
+  document.getElementById('cluster-cancel-btn').addEventListener('click', () => cancelCluster());
+}
+
+// ---------------------------------------------------------------------------
+// Smart Clean (AI) — countdown toast
+// ---------------------------------------------------------------------------
+
+const COUNTDOWN_DEFAULT = 5;
+let countdownTimer = null;
+let countdownTotal = COUNTDOWN_DEFAULT;
+let countdownTabIds = [];
+
+async function runSmartClean() {
+  cancelSmartClean();
+  const panel = document.getElementById('ai-panel');
+  panel.hidden = false;
+  document.getElementById('ai-loading').hidden = false;
+  document.getElementById('ai-preview-list').innerHTML = '';
+  document.getElementById('smart-btn').disabled = true;
+
+  try {
+    const result = await msg('getSmartSuggestions', { aiConfig });
+    document.getElementById('ai-loading').hidden = true;
+
+    if (!result.success) throw new Error(result.error ?? 'Unknown error');
+
+    if (result.suggestions.length === 0) {
+      document.getElementById('ai-status').textContent = '✓ AI found nothing to close';
+      document.getElementById('smart-btn').disabled = false;
+      setTimeout(() => { panel.hidden = true; }, 2500);
+      return;
+    }
+
+    countdownTabIds = result.suggestions.map(s => s.tabId);
+    renderAiPreview(result.suggestions);
+
+    const { smartCleanCountdown = COUNTDOWN_DEFAULT } = await chrome.storage.sync.get('smartCleanCountdown');
+    countdownTotal = smartCleanCountdown;
+    startCountdown();
+  } catch (err) {
+    document.getElementById('ai-loading').hidden = true;
+    document.getElementById('ai-status').textContent = `Error: ${err.message}`;
+    document.getElementById('smart-btn').disabled = false;
+  }
+}
+
+function renderAiPreview(suggestions) {
+  const list = document.getElementById('ai-preview-list');
+  list.innerHTML = '';
+
+  const CAT_LABELS = {
+    'finished-reading': { label: 'read',      cls: 'ai-cat-finished-reading' },
+    'accidental':       { label: 'accidental', cls: 'ai-cat-accidental' },
+    'redundant-intent': { label: 'redundant',  cls: 'ai-cat-redundant-intent' },
+    'low-value':        { label: 'low value',  cls: 'ai-cat-low-value' },
+  };
+
+  for (const s of suggestions) {
+    const { label = s.category, cls = '' } = CAT_LABELS[s.category] ?? {};
+    const li = document.createElement('li');
+    li.innerHTML =
+      `<div class="ai-tab-info">`
+      + `<div class="ai-tab-title">${escHtml(s.title)}</div>`
+      + `<div class="ai-tab-reason">${escHtml(s.reason)}</div>`
+      + `</div>`
+      + `<span class="ai-tab-cat ${escHtml(cls)}">${escHtml(label)}</span>`;
+    list.appendChild(li);
+  }
+
+  const n = suggestions.length;
+  document.getElementById('ai-status').childNodes[0].textContent = `Closing ${n} tab${n !== 1 ? 's' : ''} in `;
+  document.getElementById('ai-countdown-n').textContent = '';
+}
+
+function startCountdown() {
+  let remaining = countdownTotal;
+  updateCountdownBar(remaining);
+
+  countdownTimer = setInterval(async () => {
+    remaining -= 1;
+    updateCountdownBar(remaining);
+
+    if (remaining <= 0) {
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+      await executeSmartClose();
+    }
+  }, 1000);
+}
+
+function updateCountdownBar(remaining) {
+  document.getElementById('ai-countdown-n').textContent = `${remaining}s`;
+}
+
+function cancelSmartClean() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  countdownTabIds = [];
+  document.getElementById('ai-panel').hidden = true;
+  document.getElementById('smart-btn').disabled = false;
+}
+
+async function executeSmartClose() {
+  document.getElementById('ai-panel').hidden = true;
+  document.getElementById('smart-btn').disabled = false;
+
+  if (countdownTabIds.length === 0) return;
+
+  try {
+    const result = await msg('closeSmartSuggestions', { tabIds: countdownTabIds });
+    countdownTabIds = [];
+    showBottom(result);
+    await Promise.all([refreshTabCount(), refreshAgeBar()]);
+    await refreshAll();
+  } catch (err) {
+    showBottom({ success: false, error: err.message });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AI Cluster
+// ---------------------------------------------------------------------------
+
+let pendingClusters = null;
+let clusterCountdownTimer = null;
+let clusterCountdownTotal = COUNTDOWN_DEFAULT;
+
+async function runAiCluster() {
+  cancelCluster();
+  const panel = document.getElementById('cluster-panel');
+  panel.hidden = false;
+  document.getElementById('cluster-loading').hidden = false;
+  document.getElementById('cluster-list').innerHTML = '';
+  document.getElementById('cluster-countdown-n').textContent = '';
+  document.getElementById('cluster-status').childNodes[0].textContent = 'Clustering tabs with AI…';
+  document.getElementById('cluster-btn').disabled = true;
+
+  try {
+    const result = await msg('getAiClusters', { aiConfig });
+    document.getElementById('cluster-loading').hidden = true;
+
+    if (!result.success) throw new Error(result.error ?? 'Unknown error');
+
+    if (result.clusters.length === 0) {
+      document.getElementById('cluster-status').childNodes[0].textContent = 'Not enough tabs to cluster';
+      document.getElementById('cluster-btn').disabled = false;
+      setTimeout(() => { panel.hidden = true; }, 2500);
+      return;
+    }
+
+    pendingClusters = result.clusters;
+    renderClusterPreview(result.clusters);
+
+    const { smartCleanCountdown = COUNTDOWN_DEFAULT } = await chrome.storage.sync.get('smartCleanCountdown');
+    clusterCountdownTotal = smartCleanCountdown;
+
+    const n = result.clusters.length;
+    document.getElementById('cluster-status').childNodes[0].textContent =
+      `Applying ${n} cluster${n !== 1 ? 's' : ''} in `;
+    startClusterCountdown();
+    document.getElementById('cluster-btn').disabled = false;
+  } catch (err) {
+    document.getElementById('cluster-loading').hidden = true;
+    document.getElementById('cluster-status').childNodes[0].textContent = `Error: ${err.message}`;
+    document.getElementById('cluster-btn').disabled = false;
+  }
+}
+
+const COLOR_DOT_CLASS = {
+  blue: 'cluster-dot-blue', green: 'cluster-dot-green', red: 'cluster-dot-red',
+  yellow: 'cluster-dot-yellow', purple: 'cluster-dot-purple', cyan: 'cluster-dot-cyan',
+  orange: 'cluster-dot-orange', pink: 'cluster-dot-pink', grey: 'cluster-dot-grey',
+};
+
+function renderClusterPreview(clusters) {
+  const container = document.getElementById('cluster-list');
+  container.innerHTML = '';
+  for (const cluster of clusters) {
+    const dotCls = COLOR_DOT_CLASS[cluster.color] ?? 'cluster-dot-grey';
+    const tabItems = cluster.tabs.slice(0, 5)
+      .map(t => `<li>${escHtml(t.title)}</li>`).join('');
+    const more = cluster.tabs.length > 5
+      ? `<li style="color:#aaa">+${cluster.tabs.length - 5} more</li>` : '';
+    const div = document.createElement('div');
+    div.className = 'cluster-group';
+    div.innerHTML =
+      `<div class="cluster-group-header">`
+      + `<span class="cluster-dot ${escHtml(dotCls)}"></span>`
+      + `<span>${escHtml(cluster.name)}</span>`
+      + `<span style="font-size:11px;color:#aaa;font-weight:400;margin-left:auto">${cluster.tabs.length} tab${cluster.tabs.length !== 1 ? 's' : ''}</span>`
+      + `</div>`
+      + `<ul class="cluster-tab-list">${tabItems}${more}</ul>`;
+    container.appendChild(div);
+  }
+}
+
+function startClusterCountdown() {
+  let remaining = clusterCountdownTotal;
+  document.getElementById('cluster-countdown-n').textContent = `${remaining}s`;
+
+  clusterCountdownTimer = setInterval(async () => {
+    remaining -= 1;
+    document.getElementById('cluster-countdown-n').textContent = `${remaining}s`;
+
+    if (remaining <= 0) {
+      clearInterval(clusterCountdownTimer);
+      clusterCountdownTimer = null;
+      await executeCluster();
+    }
+  }, 1000);
+}
+
+function cancelCluster() {
+  if (clusterCountdownTimer) {
+    clearInterval(clusterCountdownTimer);
+    clusterCountdownTimer = null;
+  }
+  pendingClusters = null;
+  document.getElementById('cluster-panel').hidden = true;
+  document.getElementById('cluster-btn').disabled = false;
+}
+
+async function executeCluster() {
+  document.getElementById('cluster-panel').hidden = true;
+  if (!pendingClusters) return;
+
+  try {
+    const result = await msg('applyAiClusters', { clusters: pendingClusters });
+    pendingClusters = null;
+    showBottom(result);
+    await Promise.all([refreshTabCount(), refreshAgeBar()]);
+    await refreshAll();
+  } catch (err) {
+    showBottom({ success: false, error: err.message });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -423,12 +713,22 @@ function showBottom(result) {
 }
 
 function buildResultText(r) {
-  if (r.action === 'undo')        return textUndo(r);
-  if (r.action === 'runAll')      return textRunAll(r);
-  if (r.action === 'groupByDomain' || r.action === 'groupByTime') return textGroup(r);
-  if (r.action === 'closeGroup')  return textCloseGroup(r);
-  if (r.action === 'focusMode')   return textFocusMode(r);
+  if (r.action === 'undo')               return textUndo(r);
+  if (r.action === 'runAll')             return textRunAll(r);
+  if (r.action === 'groupByDomain') return textGroup(r);
+  if (r.action === 'closeGroup')         return textCloseGroup(r);
+  if (r.action === 'focusMode')          return textFocusMode(r);
   if (r.action === 'saveAndClose' || r.action === 'closeStaleTabs') return textStale(r);
+  if (r.action === 'closeSmartSuggestions') {
+    const tabWord = r.closed !== 1 ? 'tabs' : 'tab';
+    return r.closed > 0 ? `✓ Closed ${r.closed} ${tabWord} (AI)` : 'Nothing closed.';
+  }
+  if (r.action === 'applyAiClusters') {
+    const g = r.groupsCreated ?? 0;
+    if (g === 0) return 'No groups created.';
+    const plural = g !== 1 ? 's' : '';
+    return `✓ Created ${g} AI cluster${plural} (${r.tabsGrouped} tabs)`;
+  }
   if (r.closed > 0) {
     const tabWord = r.closed !== 1 ? 's' : '';
     return `✓ Closed ${r.closed} tab${tabWord}`;
@@ -477,7 +777,8 @@ function textStale(r) {
 function isUndoable(action) {
   return ['runAll', 'closeStaleTabs', 'saveAndClose', 'closeGroup', 'focusMode',
           'removeDuplicates', 'closeErrorTabs', 'closeSearchDuplicates',
-          'groupByDomain', 'groupByTime'].includes(action);
+          'groupByDomain', 'closeSmartSuggestions',
+          'applyAiClusters'].includes(action);
 }
 
 // ---------------------------------------------------------------------------
@@ -522,6 +823,8 @@ const SETTINGS_FIELDS = [
   { id: 's-focusKeepCount',       key: 'focusKeepCount',       type: 'number'   },
   { id: 's-tabLimitYellow',       key: 'tabLimitYellow',       type: 'number'   },
   { id: 's-tabLimitRed',          key: 'tabLimitRed',          type: 'number'   },
+  { id: 's-smartCleanCountdown',  key: 'smartCleanCountdown',  type: 'number'   },
+  { id: 's-aiProvider',           key: 'aiProvider',           type: 'select'   },
 ];
 
 let saveFlashTimer = null;

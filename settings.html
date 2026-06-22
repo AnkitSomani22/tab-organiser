@@ -147,6 +147,27 @@
     </div>
   </div>
 
+  <div class="card">
+    <h2>Smart Clean (AI)</h2>
+    <div class="row">
+      <div class="row-left">
+        <label for="smartCleanCountdown">Countdown (seconds)</label>
+        <span class="hint">Seconds before Smart Clean auto-closes tabs (1–30)</span>
+      </div>
+      <input type="number" id="smartCleanCountdown" min="1" max="30" step="1" />
+    </div>
+    <div class="row">
+      <div class="row-left">
+        <label for="aiProvider">AI provider</label>
+        <span class="hint">Which model to use for Smart Clean &amp; Smart Grouping</span>
+      </div>
+      <select id="aiProvider">
+        <option value="gemini">Gemini</option>
+        <option value="anthropic">Anthropic</option>
+      </select>
+    </div>
+  </div>
+
   <div class="save-row">
     <button class="btn-save" id="save-btn">Save settings</button>
     <span class="status" id="save-status" hidden>Saved!</span>

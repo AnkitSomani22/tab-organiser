@@ -32,26 +32,26 @@ A lightweight Chrome extension (Manifest V3) that intelligently cleans up, organ
 Click the extension icon to open the popup. It analyses your tabs instantly and shows smart suggestion cards.
 
 ```
-┌─────────────────────────────────────────┐
-│  Tab Organiser          8 tabs  ↻  ⚙   │
-├──────────┬──────────┬──────────┬────────┤
-│  6 TODAY │  2 WEEK  │  0 OLDER │ Window │ ← age bar + scope
-├──────────┴──────────┴──────────┴────────┤
-│  ╔══════════════════════════════════╗   │
-│  ║ 3 tabs can be closed          ⓘ ║   │ ← suggestion card
-│  ║ 2 duplicates, 1 error/auth      ║   │
-│  ║                           [Fix] ║   │
-│  ╚══════════════════════════════════╝   │
-│  ╔══════════════════════════════════╗   │
-│  ║ 1 domain group possible       ⓘ ║   │
-│  ║ Google (2)                       ║   │
-│  ║                         [Group] ║   │
-│  ╚══════════════════════════════════╝   │
-├─────────────────────────────────────────┤
-│  [🕐 Group by time] [⚡ Focus]          │ ← quick actions
-├─────────────────────────────────────────┤
-│  ✓ Closed 3 tabs              ↩ Undo   │ ← result bar
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  Tab Organiser                   12 tabs  ↻  ⚙      │
+├──────────┬──────────┬──────────┬─────────────────────┤
+│  6 TODAY │  4 WEEK  │  2 OLDER │ Window │ All        │ ← age bar + scope
+├──────────┴──────────┴──────────┴─────────────────────┤
+│  ╔═══════════════════════════════════════════════╗   │
+│  ║ 3 tabs can be closed                       ⓘ ║   │ ← suggestion card
+│  ║ 2 duplicates, 1 error/auth                   ║   │
+│  ║                                        [Fix] ║   │
+│  ╚═══════════════════════════════════════════════╝   │
+│  ╔═══════════════════════════════════════════════╗   │
+│  ║ 1 domain group possible                    ⓘ ║   │
+│  ║ GitHub (3)                                   ║   │
+│  ║                                      [Group] ║   │
+│  ╚═══════════════════════════════════════════════╝   │
+├─────────────────────────────────────────────────────┤
+│  [⚡ Focus] [✨ Smart Clean] [🧠 Smart Grouping]     │ ← quick actions
+├─────────────────────────────────────────────────────┤
+│  ✓ Closed 3 tabs                          ↩ Undo   │ ← result bar
+└─────────────────────────────────────────────────────┘
 ```
 
 ### Suggestion cards
@@ -70,8 +70,11 @@ Hover the **ⓘ** icon on any card to preview exactly which tabs will be affecte
 
 | Button | What it does |
 |---|---|
-| **🕐 Group by time** | Groups tabs by the time slot they were last accessed: Morning / Afternoon / Evening / Night |
 | **⚡ Focus** | Keeps only the N most recently used tabs and closes everything else (pinned + audible always kept) |
+| **✨ Smart Clean** | AI analyses all open tabs and recommends which to close. Shows a preview with reasons, then auto-closes after a countdown. Requires an Anthropic API key. |
+| **🧠 Smart Grouping** | AI clusters your tabs into named topic groups (e.g. "React Research", "Holiday Planning") and creates Chrome tab groups automatically. Requires an Anthropic API key. |
+
+The **✨ Smart Clean** and **🧠 Smart Grouping** buttons are hidden until an API key is configured (see [AI features](#ai-features) below).
 
 ### Age bar
 
@@ -86,7 +89,7 @@ Switch between **Window** (current window only) and **All** (all windows) to con
 
 ### Undo
 
-Every destructive action saves a snapshot first. After any close or group action, an **↩ Undo** button appears in the result bar. Click it to restore.
+Every destructive action saves a snapshot first. After any close or group action, an **↩ Undo** button appears in the result bar. The undo history persists for the duration of your browser session — reopening the popup does not lose it.
 
 - Close actions: reopens the tabs (uses Chrome's session history where possible)
 - Group actions: ungroups the tabs that were just grouped
@@ -119,8 +122,69 @@ Click the **⚙** icon in the header to open inline settings. All changes save a
 | Strip tracking params | On | Removes utm_*, gclid, fbclid etc. before comparing URLs |
 | Stale after (days) | 3 | Tabs not accessed in this many days appear in the stale card |
 | Focus keeps (tabs) | 4 | Number of most-recent tabs to keep when Focus Mode runs |
+| Smart Clean countdown (s) | 5 | Seconds before Smart Clean or Smart Grouping auto-applies (1–30) |
 | Orange badge at | 20 | Toolbar badge turns orange above this tab count |
 | Red badge at | 30 | Toolbar badge turns red above this tab count |
+
+---
+
+## AI features
+
+**Smart Clean** and **Smart Grouping** use the [Anthropic API](https://console.anthropic.com/) (Claude Haiku) to reason about your tabs. Both features are opt-in and only visible when a key is configured.
+
+### Setup
+
+Create a `config.local.json` file in the extension root (already git-ignored):
+
+```json
+{
+  "apiKey": "sk-ant-...",
+  "model": "claude-haiku-4-5-20251001",
+  "baseUrl": ""
+}
+```
+
+- **`apiKey`** — your Anthropic API key
+- **`model`** — model to use (defaults to Haiku; change to any Claude model ID)
+- **`baseUrl`** — override to point at a local proxy (e.g. `http://localhost:6655/anthropic`)
+
+Reload the extension after creating the file. The two AI buttons appear in the quick row automatically.
+
+### What gets sent
+
+Only minimal, anonymised tab metadata is sent to the API:
+
+- Tab title
+- Domain (hostname only — no URL path, query params, or fragments)
+- Age in hours since last access
+- Pinned / audible flags
+
+No full URLs, no page content, no personal data.
+
+### Smart Clean
+
+Analyses all open tabs and recommends which ones to close, categorised as:
+
+| Category | Meaning |
+|---|---|
+| **read** | Article or page that has been fully consumed |
+| **accidental** | Opened by mistake, no clear purpose |
+| **redundant** | Intent already acted upon (search result, docs reference) |
+| **low value** | Background reference that is unlikely to be revisited |
+
+After analysis, a preview panel shows the recommended tabs with a reason for each. A countdown begins — the tabs close automatically when it reaches zero. Cancel any time to abort.
+
+### Smart Grouping
+
+Analyses all open tabs and groups them by project or topic intent — not just domain. For example, three GitHub tabs and two Stack Overflow tabs researching the same problem will land in the same cluster rather than two separate domain groups.
+
+The AI assigns each cluster a descriptive name and a Chrome tab group color. A preview shows the proposed clusters before anything is applied. The same countdown applies — groups are created when it reaches zero.
+
+Both AI features support **Undo** via the standard ↩ Undo button.
+
+### Cost
+
+A typical invocation across 20–50 tabs costs approximately **$0.001–$0.005** using Claude Haiku.
 
 ---
 
@@ -149,10 +213,10 @@ Tag a commit and the GitHub Actions workflow builds and publishes the ZIP automa
 # 1. bump "version" in manifest.json
 # 2. commit
 git add .
-git commit -m "v1.0.1"
+git commit -m "v1.1.0"
 
 # 3. tag — triggers the release workflow
-git tag v1.0.1
+git tag v1.1.0
 git push origin main --tags
 ```
 
@@ -167,12 +231,16 @@ The workflow creates a GitHub Release with `tab-organiser.zip` attached and inst
 ├── background.js           Service worker — badge, message routing, context menus
 ├── popup.html/css/js       Popup UI
 ├── settings.html/js        Options page (accessible via chrome://extensions)
+├── config.local.json       Local AI config — git-ignored, create manually
 └── lib/
     ├── actions.js          Central message dispatcher
+    ├── ai.js               Anthropic API calls (Smart Clean + Smart Grouping prompts)
+    ├── aicleanup.js        Smart Clean orchestration
+    ├── aigrouping.js       Smart Grouping orchestration
     ├── analyze.js          Read-only tab analysis (all detection types)
     ├── cleanup.js          Destructive cleanup actions
     ├── constants.js        Shared constants, patterns, and default settings
-    ├── grouping.js         Domain grouping and time-based grouping
+    ├── grouping.js         Domain-based tab grouping
     ├── normalize.js        URL normalisation and search query parsing
     ├── settings.js         chrome.storage.sync read/write helpers
     ├── stale.js            Stale detection, age breakdown, focus mode, save-and-close
@@ -191,4 +259,6 @@ The workflow creates a GitHub Release with `tab-organiser.zip` attached and inst
 | `sessions` | Restore recently closed tabs on undo |
 | `contextMenus` | Right-click menu actions on tabs |
 
-No data is sent anywhere. Everything stays in your browser.
+The extension also requests `http://localhost:*/` host permissions to support AI features. These are only used when `config.local.json` is present.
+
+No browsing history, page content, or full URLs ever leave your browser.

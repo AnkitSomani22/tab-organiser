@@ -1,3 +1,4 @@
 .claude/
 *.jsonl
 *.zip
+config.local.json

@@ -6,6 +6,8 @@
 
   "permissions": ["tabs", "tabGroups", "storage", "sessions", "contextMenus"],
 
+  "host_permissions": ["https://generativelanguage.googleapis.com/", "http://localhost:*/"],
+
   "background": {
     "service_worker": "background.js",
     "type": "module"
